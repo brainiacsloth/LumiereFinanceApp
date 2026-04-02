@@ -1529,7 +1529,7 @@ async function doForgot() {
   var btn=document.querySelector('#view-forgot .btn-primary');
   btn.textContent='Sending…';btn.disabled=true;
   var sb=getClient();
-  if(sb){try{await sb.auth.resetPasswordForEmail(email);}catch(e){}}
+  if(sb){try{await sb.auth.resetPasswordForEmail(email, {redirectTo: 'https://brainiacsloth.github.io/LumiereFinanceApp'});}catch(e){}}
   document.getElementById('forgot-form').style.display='none';
   document.getElementById('forgot-success').classList.add('show');
 }
@@ -1545,8 +1545,8 @@ async function doReset() {
   btn.textContent='Update password';btn.disabled=false;
 }
 
-async function signInWithGitHub(){var sb=getClient();if(sb)await sb.auth.signInWithOAuth({provider:'github'});}
-async function signInWithGoogle(){var sb=getClient();if(sb)await sb.auth.signInWithOAuth({provider:'google'});}
+async function signInWithGitHub(){var sb=getClient();if(sb)await sb.auth.signInWithOAuth({provider:'github',options:{redirectTo:'https://brainiacsloth.github.io/LumiereFinanceApp'}});}
+async function signInWithGoogle(){var sb=getClient();if(sb)await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:'https://brainiacsloth.github.io/LumiereFinanceApp'}});}
 
 function setText(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
 function escH(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
