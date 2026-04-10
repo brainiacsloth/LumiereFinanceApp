@@ -491,7 +491,7 @@ canvas#rc{max-height:280px;width:100% !important;}
 /* ── PROFILE MODAL ── */
 .profile-ov{display:none;position:fixed;inset:0;background:rgba(10,14,26,0.55);z-index:600;align-items:flex-end;justify-content:flex-start;backdrop-filter:blur(4px)}
 .profile-ov.open{display:flex}
-.profile-panel{background:var(--s1);width:320px;height:100vh;display:flex;flex-direction:column;box-shadow:4px 0 40px rgba(0,0,0,0.15);animation:slideInL 0.2s ease;margin-left:var(--sidebar)}
+.profile-panel{background:var(--s1);width:420px;height:100vh;display:flex;flex-direction:column;box-shadow:4px 0 40px rgba(0,0,0,0.15);animation:slideInL 0.2s ease;margin-left:var(--sidebar)}
 @keyframes slideInL{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:none}}
 .profile-head{padding:20px 22px 16px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between}
 .profile-head-title{font-size:15px;font-weight:800;color:var(--t1);letter-spacing:-0.3px}
@@ -1126,7 +1126,7 @@ window.addEventListener('load', async function() {
 </script>
 </div>
 <input type="file" id="logo-file-input" accept="image/*" style="display:none" onchange="onLogoFileChange(this)"/>
-<div class="shell">
+<div class="shell" id="app-shell" style="visibility:hidden">
 
 <aside class="sb">
   <div class="sb-top">
@@ -1452,8 +1452,13 @@ function hideAuth() {
 }
 
 async function checkAuth() {
+  var shell = document.getElementById('app-shell');
   var sb = getClient();
-  if (!sb) { hideAuth(); return; } // Demo mode
+  if (!sb) {
+    hideAuth();
+    if (shell) shell.style.visibility = 'visible';
+    return;
+  }
   try {
     var r = await sb.auth.getSession();
     var session = r.data && r.data.session;
@@ -1462,17 +1467,31 @@ async function checkAuth() {
     } else {
       _currentUser = session.user;
       hideAuth();
-      var nameEl = document.querySelector('.sb-un');
-      if (nameEl && _currentUser.email) nameEl.textContent = _currentUser.email;
+      await loadProfileFromDB();
+      // Only open profile setup on very first login (no business_name in DB)
+      var sb2 = getClient();
+      if (sb2 && _currentUser) {
+        var pr = await sb2.from('profiles').select('business_name').eq('id', _currentUser.id).single();
+        if (pr.data && !pr.data.business_name) {
+          var title = document.getElementById('profile-panel-title');
+          if (title) title.textContent = 'Welcome — set up your studio';
+          openProfile();
+        }
+      }
     }
   } catch(e) { hideAuth(); }
+  if (shell) shell.style.visibility = 'visible';
 }
 
 async function signOut() {
   var sb = getClient();
   if (sb) { try { await sb.auth.signOut(); } catch(e){} }
   _currentUser = null;
-  showAuth('signin');
+  localStorage.removeItem(PROF_KEY);
+  localStorage.removeItem('lm_logo');
+  localStorage.removeItem('lm_files2');
+  localStorage.removeItem('lm_folders');
+  location.reload();
 }
 
 // ── Auth functions (used by auth HTML) ──
@@ -1498,9 +1517,10 @@ async function doSignIn() {
     var r=await sb.auth.signInWithPassword({email,password:pw});
     if(r.error)throw r.error;
     _currentUser=r.data.user;
-    var nameEl=document.querySelector('.sb-un');
-    if(nameEl)nameEl.textContent=email;
     hideAuth();
+    var _shell=document.getElementById('app-shell');if(_shell)_shell.style.visibility='visible';
+    await loadProfileFromDB();
+    var _sb2=getClient();if(_sb2&&_currentUser){var _pr=await _sb2.from('profiles').select('business_name').eq('id',_currentUser.id).single();if(_pr.data&&!_pr.data.business_name){var _t=document.getElementById('profile-panel-title');if(_t)_t.textContent='Welcome — set up your studio';openProfile();}}
   }catch(e){showErr('si-password',e.message||'Invalid credentials');btn.textContent='Sign in';btn.disabled=false;}
 }
 
@@ -2831,13 +2851,41 @@ function loadProfile() {
   try { return JSON.parse(localStorage.getItem(PROF_KEY) || '{}'); } catch(e) { return {}; }
 }
 
+async function loadProfileFromDB() {
+  var sb = getClient();
+  if (!sb || !_currentUser) return;
+  try {
+    var r = await sb.from('profiles').select('*').eq('id', _currentUser.id).single();
+    if (r.data) {
+      var p = {
+        bname:  r.data.business_name || r.data.company_name || '',
+        addr:   r.data.address || r.data.company_address || '',
+        email:  r.data.email || '',
+        phone:  r.data.phone || '',
+        vat:    r.data.vat_number || '',
+        tax:    r.data.tax_number || '',
+        reg:    r.data.reg_number || '',
+        pname:  r.data.full_name || '',
+        ptitle: r.data.job_title || '',
+        logo:   r.data.logo_url || ''
+      };
+      localStorage.setItem(PROF_KEY, JSON.stringify(p));
+      if (p.logo) {
+        localStorage.setItem('lm_logo', p.logo);
+        applyLogo(p.logo);
+      }
+      var nameEl = document.querySelector('.sb-un');
+      if (nameEl && p.bname) nameEl.textContent = p.bname;
+    }
+  } catch(e) { console.log('Profile load error:', e); }
+}
+
 function openProfile() {
   var p = loadProfile();
-  // Populate fields
   var set = function(id, val) { var e = document.getElementById(id); if(e) e.value = val || ''; };
-  set('prof-bname', p.bname || 'Lumière Incoporated.');
-  set('prof-addr',  p.addr  || 'Cape Town, South Africa');
-  set('prof-email', p.email || 'vumboni@lumiereinc.co.za');
+  set('prof-bname', p.bname || '');
+  set('prof-addr',  p.addr  || '');
+  set('prof-email', p.email || '');
   set('prof-phone', p.phone || '');
   set('prof-vat',   p.vat   || '');
   set('prof-tax',   p.tax   || '');
@@ -2880,7 +2928,7 @@ function profileLogoChange(input) {
   input.value = '';
 }
 
-function saveProfile() {
+async function saveProfile() {
   var get = function(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
   var p = {
     bname:  get('prof-bname'),
@@ -2894,9 +2942,27 @@ function saveProfile() {
     ptitle: get('prof-ptitle'),
   };
   localStorage.setItem(PROF_KEY, JSON.stringify(p));
-  // Update sidebar display
   var nameEl = document.querySelector('.sb-un');
   if (nameEl && p.bname) nameEl.textContent = p.bname;
+
+  // Save to Supabase
+  var sb = getClient();
+  if (sb && _currentUser) {
+    try {
+      await sb.from('profiles').upsert({
+        id:            _currentUser.id,
+        business_name: p.bname,
+        address:       p.addr,
+        email:         p.email,
+        phone:         p.phone,
+        vat_number:    p.vat,
+        tax_number:    p.tax,
+        reg_number:    p.reg,
+        full_name:     p.pname,
+      });
+    } catch(e) { console.log('Profile save error:', e); }
+  }
+
   closeProfile();
   toast('Profile saved', 'ok');
 }
@@ -2966,7 +3032,7 @@ function getProfileDefaults() {
 <div class="profile-ov" id="profile-ov" onclick="if(event.target===this)closeProfile()">
   <div class="profile-panel" onclick="event.stopPropagation()">
     <div class="profile-head">
-      <div class="profile-head-title">Account Settings</div>
+      <div class="profile-head-title" id="profile-panel-title">Account Settings</div>
       <button class="profile-close" onclick="closeProfile()">✕</button>
     </div>
     <div class="profile-body">
