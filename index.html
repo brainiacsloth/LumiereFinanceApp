@@ -2188,126 +2188,68 @@ var CAT_META = {
 };
 
 function renderNews() {
-  loadNews();
-}
-
-function loadNews() {
   var el = document.getElementById('news-content');
   if (!el) return;
-  newsData = CURATED_NEWS;
-  renderNewsContent();
-
-  // Fetch live feeds via AllOrigins CORS proxy
-  var feeds = [
-    {url:'https://businesstech.co.za/news/feed/', cat:'business', src:'BusinessTech'},
-    {url:'https://www.moneyweb.co.za/feed/', cat:'finance', src:'Moneyweb'},
-    {url:'https://www.dailymaverick.co.za/dmx/rss/section/economy-business/', cat:'business', src:'Daily Maverick'}
-  ];
-
-  var liveItems = [];
-  var done = 0;
-
-  feeds.forEach(function(feed) {
-    var proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(feed.url);
-    fetch(proxyUrl)
-      .then(function(r){ return r.json(); })
-      .then(function(data) {
-        if (data && data.contents) {
-          var parser = new DOMParser();
-          var xml = parser.parseFromString(data.contents, 'text/xml');
-          var items = Array.from(xml.querySelectorAll('item')).slice(0, 4);
-          items.forEach(function(item) {
-            var title = item.querySelector('title');
-            var link  = item.querySelector('link');
-            var desc  = item.querySelector('description');
-            var pub   = item.querySelector('pubDate');
-            if (!title || !link) return;
-            var descText = desc ? desc.textContent.replace(/<[^>]+>/g,'').substring(0,160)+'…' : '';
-            var age = pub ? new Date(pub.textContent).toLocaleDateString('en-ZA',{day:'numeric',month:'short'}) : 'Recent';
-            liveItems.push({
-              title: title.textContent,
-              desc:  descText,
-              cat:   feed.cat,
-              src:   feed.src,
-              age:   age,
-              url:   link.textContent || (link.nextSibling && link.nextSibling.textContent) || '#',
-              live:  true
-            });
-          });
-        }
-      })
-      .catch(function(){})
-      .finally(function(){
-        done++;
-        if (done === feeds.length && liveItems.length) {
-          newsData = liveItems.concat(CURATED_NEWS);
-          renderNewsContent();
-        }
-      });
-  });
-}
-
-  
-function filterNews(cat, btn) {
-  newsFilter = cat;
-  document.querySelectorAll('.nfbtn').forEach(function(b){ b.classList.remove('on'); });
-  if (btn) btn.classList.add('on');
   renderNewsContent();
 }
 
 function renderNewsContent() {
   var el = document.getElementById('news-content');
   if (!el) return;
-  
-  var filtered = newsFilter === 'all' ? newsData : newsData.filter(function(n){ return n.cat === newsFilter; });
-  
+  var data = (typeof newsData !== "undefined" ? newsData : []);
+  var cat = activeNewsCat || 'all';
+  var filtered = cat === 'all' ? data : data.filter(function(a){ return a.cat === cat; });
+
   if (!filtered.length) {
-    el.innerHTML = '<div class="news-empty">No articles found for this category. <button class="link-btn" onclick="filterNews(\'all\',document.querySelector(\'.nfbtn\'))">View all</button></div>';
+    el.innerHTML = '<div class="news-empty">No articles found. <button class="link" onclick="loadNews()">Try refreshing</button></div>';
     return;
   }
 
+  var am = {
+    tax:     {cls:'tax',    label:'Tax & SARS'},
+    invoice: {cls:'invoice',label:'Invoicing'},
+    business:{cls:'business',label:'SME'},
+    finance: {cls:'finance', label:'Finance'}
+  };
+
   var featured = filtered[0];
   var rest = filtered.slice(1);
-  var meta = CAT_META[featured.cat] || {label:'News',cls:'business'};
+  var featAm = am[featured.cat] || {cls:'business', label:'SME'};
+  var featDesc = featured.desc ? (featured.desc.length > 200 ? featured.desc.substring(0,200)+'…' : featured.desc) : '';
 
   var html = '';
-  
+
   // Featured card
-  var featDesc = featured.desc || '';
-  if (featDesc.length > 200) featDesc = featDesc.substring(0,200) + '…';
-  
-  html += '<div class="news-featured" onclick="openArticle(\'' + encodeURIComponent(featured.url) + '\')">'
+  html += '<div class="news-featured" data-url="' + escH(featured.url) + '" onclick="openArticle(this.dataset.url)" style="cursor:pointer">';
+  html += '<span class="news-featured-tag news-tag ' + featAm.cls + '">' + featAm.label + '</span>';
+  html += '<div class="news-featured-title">' + escH(featured.title) + '</div>';
+  html += '<div class="news-featured-desc">' + escH(featDesc) + '</div>';
+  html += '<div class="news-featured-meta"><span class="news-card-src">' + escH(featured.src) + '</span><span>·</span><span>' + featured.age + '</span></div>';
+  html += '</div>';
 
-    + '<div class="news-featured-body">'
-    + '<span class="news-featured-tag">' + (featured.live ? '● Live' : meta.label) + '</span>'
-    + '<div class="news-featured-title">' + escH(featured.title) + '</div>'
-    + '<div class="news-featured-desc">' + escH(featDesc) + '</div>'
-    + '<div class="news-featured-meta"><span class="news-card-src">' + escH(featured.src) + '</span><span class="dot"></span><span>' + featured.age + '</span></div>'
-    + '</div></div>';
-
-  // Grid of rest
+  // Grid
   if (rest.length) {
     html += '<div class="news-section-title">More Articles</div>';
     html += '<div class="news-grid">';
     for (var i = 0; i < rest.length; i++) {
       var a = rest[i];
-      var am = CAT_META[a.cat] || {label:'News',cls:'business'};
-      var adesc = a.desc || '';
-      if (adesc.length > 120) adesc = adesc.substring(0,120) + '…';
-      var _url = encodeURIComponent(a.url);
-      html += '<div class="news-card" onclick="openArticle(decodeURIComponent(\'' + _url + '\'))" style="cursor:pointer">'
-        + '<div class="news-card-body">'
-        + '<span class="news-tag ' + am.cls + '">' + (a.live ? '● Live · ' : '') + am.label + '</span>'
-        + '<div class="news-card-title">' + escH(a.title) + '</div>'
-        + '<div class="news-card-desc">' + escH(adesc) + '</div>'
-        + '<div class="news-card-meta"><span class="news-card-src">' + escH(a.src) + '</span><span class="dot"></span><span>' + a.age + '</span></div>'
-        + '</div></div>';
+      var aAm = am[a.cat] || {cls:'business', label:'SME'};
+      var adesc = a.desc ? (a.desc.length > 120 ? a.desc.substring(0,120)+'…' : a.desc) : '';
+      html += '<div class="news-card" data-url="' + escH(a.url) + '" onclick="openArticle(this.dataset.url)" style="cursor:pointer">';
+      html += '<div class="news-card-body">';
+      html += '<span class="news-tag ' + aAm.cls + '">' + aAm.label + '</span>';
+      html += '<div class="news-card-title">' + escH(a.title) + '</div>';
+      html += '<div class="news-card-desc">' + escH(adesc) + '</div>';
+      html += '</div>';
+      html += '<div class="news-card-meta"><span class="news-card-src">' + escH(a.src) + '</span><span>·</span><span>' + a.age + '</span></div>';
+      html += '</div>';
     }
     html += '</div>';
   }
 
   el.innerHTML = html;
 }
+
 
 function openArticle(url) {
   if (url) window.open(url, '_blank', 'noopener');
@@ -3242,7 +3184,7 @@ function getProfileDefaults() {
   <div class="content" id="vw-news" style="display:none">
     <div class="ph" style="margin-bottom:18px">
       <div><div class="pt">News &amp; Insights</div><div class="pd">Tax, invoicing &amp; business intelligence for South African SMEs</div></div>
-      <button class="news-refresh" onclick="loadNews()">
+      <button class="news-refresh" onclick="loadNews()" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         Refresh
       </button>
